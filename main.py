@@ -1,19 +1,5 @@
-import sys
-from io import BytesIO
-# Этот класс поможет нам сделать картинку из потока байт
+from Functions import *
 
-import requests
-from PIL import Image
-
-# Пусть наше приложение предполагает запуск:
-# python search.py Москва, ул. Ак. Королева, 12
-# Тогда запрос к геокодеру формируется следующим образом:
-
-def sep_find(toponym):
-    corn = toponym['boundedBy']['Envelope']
-    a, b = map(float, corn['lowerCorner'].split())
-    c, d = map(float, corn['upperCorner'].split())
-    return str(a / c), str(b / d)
 
 toponym_to_find = " ".join(sys.argv[1:])
 
@@ -40,22 +26,57 @@ toponym_coodrinates = toponym["Point"]["pos"]
 # Долгота и широта:
 toponym_longitude, toponym_lattitude = toponym_coodrinates.split(" ")
 
-delta = "0.02"
 
+
+search_api_server = "https://search-maps.yandex.ru/v1/"
+api_key = "841c0928-c3b4-4576-be5c-c862f6b890ac"
+
+address_ll = toponym_longitude + ',' + toponym_lattitude
+
+search_params = {
+    "apikey": api_key,
+    "text": "аптека",
+    "lang": "ru_RU",
+    "ll": address_ll,
+    "type": "biz"
+}
+
+response = requests.get(search_api_server, params=search_params)
+if not response:
+    pass
+
+
+json_response = response.json()
+
+# Получаем первую найденную организацию.
+organization = json_response["features"][0]
+# Название организации.
+org_name = organization["properties"]["CompanyMetaData"]["name"]
+# Адрес организации.
+org_address = organization["properties"]["CompanyMetaData"]["address"]
+org_time = organization["properties"]['CompanyMetaData']['Hours']['text']
+
+# Получаем координаты ответа.
+point = organization["geometry"]["coordinates"]
+org_point = "{0},{1}".format(point[0], point[1])
+delta = "0.005"
 
 # Собираем параметры для запроса к StaticMapsAPI:
 map_params = {
-    "ll": ",".join([toponym_longitude, toponym_lattitude]),
-    "spn": ",".join(sep_find(toponym)),
+    # позиционируем карту центром на наш исходный адрес
+    "ll": address_ll,
+    "spn": ",".join(spn_find(toponym)),
     "l": "map",
-    'pt': ','.join([toponym_longitude, toponym_lattitude, 'pmwtm'])
+    # добавим точку, чтобы указать найденную аптеку
+    "pt": "{0},pm2dgl".format(org_point)
 }
 
 map_api_server = "http://static-maps.yandex.ru/1.x/"
 # ... и выполняем запрос
 response = requests.get(map_api_server, params=map_params)
 
-Image.open(BytesIO(
-    response.content)).show()
-# Создадим картинку
-# и тут же ее покажем встроенным просмотрщиком операционной системы
+Image.open(BytesIO(response.content)).show()
+print('Расстояние:', round(lonlat_distance(map(float, org_point.split(',')),
+                                           map(float, address_ll.split(',')))), 'метров')
+print(org_name, org_address)
+print(org_time)
